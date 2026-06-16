@@ -1,6 +1,6 @@
 use crate::db;
 use crate::error::{AppError, AppResult};
-use byteorder::{BigEndian, WriteBytesExt};
+use byteorder::{LittleEndian, WriteBytesExt};
 use rusb::{Context, UsbContext};
 use serde::Serialize;
 use std::fs;
@@ -267,7 +267,7 @@ fn is_favorite(conn: &rusqlite::Connection, name: &str) -> AppResult<bool> {
 
 fn construct_rcm_packet(payload: &[u8]) -> Result<Vec<u8>, std::io::Error> {
     let mut packet = Vec::with_capacity(RCM_MAX_PAYLOAD_SIZE);
-    packet.write_u32::<BigEndian>(RCM_MAX_PAYLOAD_SIZE as u32)?;
+    packet.write_u32::<LittleEndian>(RCM_MAX_PAYLOAD_SIZE as u32)?;
     packet.write_all(&vec![0u8; 680])?;
     packet.write_all(payload)?;
 
