@@ -110,34 +110,37 @@ pub fn add_payload(app: tauri::AppHandle, source: String) -> AppResult<PayloadFi
 
 #[tauri::command]
 pub fn delete_payload(app: tauri::AppHandle, name: String) -> AppResult<()> {
+    let name = validated_payload_name(&name)?;
     let dir = payloads_dir(&app)?;
     let path = dir.join(format!("{name}.bin"));
     fs::remove_file(&path)?;
     let conn = db::connect(&app)?;
-    conn.execute("DELETE FROM payload_favorites WHERE name = ?1", [&name])?;
-    record_history(&app, &name, "delete", "success", None)?;
+    conn.execute("DELETE FROM payload_favorites WHERE name = ?1", [name])?;
+    record_history(&app, name, "delete", "success", None)?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn set_favorite_payload(app: tauri::AppHandle, name: String) -> AppResult<()> {
+    let name = validated_payload_name(&name)?;
     let conn = db::connect(&app)?;
     conn.execute("DELETE FROM payload_favorites", [])?;
     conn.execute(
         "INSERT INTO payload_favorites (name) VALUES (?1)
          ON CONFLICT(name) DO NOTHING",
-        [&name],
+        [name],
     )?;
-    record_history(&app, &name, "favorite", "success", None)?;
+    record_history(&app, name, "favorite", "success", None)?;
     Ok(())
 }
 
 #[tauri::command]
 pub fn inject_payload(app: tauri::AppHandle, name: String) -> AppResult<()> {
-    let result = inject_payload_inner(&app, &name);
+    let name = validated_payload_name(&name)?;
+    let result = inject_payload_inner(&app, name);
     match &result {
-        Ok(_) => record_history(&app, &name, "inject", "success", None)?,
-        Err(err) => record_history(&app, &name, "inject", "error", Some(err.message.clone()))?,
+        Ok(_) => record_history(&app, name, "inject", "success", None)?,
+        Err(err) => record_history(&app, name, "inject", "error", Some(err.message.clone()))?,
     }
     result
 }
@@ -229,6 +232,16 @@ fn inject_payload_inner(app: &tauri::AppHandle, name: &str) -> AppResult<()> {
         .map_err(|e| AppError::with_details("usb_write", "USB transfer failed", e.to_string()))?;
 
     Ok(())
+}
+
+fn validated_payload_name(name: &str) -> AppResult<&str> {
+    if name.is_empty() || name == "." || name == ".." || name.contains('/') || name.contains('\\') {
+        return Err(AppError::new(
+            "invalid_payload_name",
+            "Payload name must not contain path separators",
+        ));
+    }
+    Ok(name)
 }
 
 fn record_history(
