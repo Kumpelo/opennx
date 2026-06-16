@@ -1,6 +1,7 @@
 use crate::commands::selected_sd_root;
 use crate::db;
 use crate::error::{AppError, AppResult};
+use crate::settings::get_safety_settings;
 use crate::updater::download::download_asset;
 use crate::updater::github::{latest_release, repo_for_component, ReleaseInfo};
 use crate::updater::integrity::sha256_file;
@@ -65,14 +66,38 @@ pub async fn prepare_update(app: tauri::AppHandle, component: String) -> AppResu
 pub async fn install_update(app: tauri::AppHandle, component: String) -> AppResult<InstallResult> {
     let prepared = prepare_update(app.clone(), component.clone()).await?;
     let sd_root = selected_sd_root(&app)?;
+    let safety = get_safety_settings(app.clone())?;
     let backup_path = create_component_backup(&app, &sd_root, &component)?;
-    let installed_files =
-        install_prepared(Path::new(&prepared.downloaded_path), &sd_root, &component)?;
     let conn = db::connect(&app)?;
     conn.execute(
         "INSERT INTO update_backups (component, path, status) VALUES (?1, ?2, ?3)",
         (&component, backup_path.to_string_lossy().as_ref(), "ready"),
     )?;
+    let backup_id = conn.last_insert_rowid();
+    let installed_files =
+        match install_prepared(Path::new(&prepared.downloaded_path), &sd_root, &component) {
+            Ok(installed_files) => installed_files,
+            Err(install_error) => {
+                if safety.rollback_on_failure {
+                    match restore_path(&backup_path, &sd_root) {
+                        Ok(()) => {
+                            conn.execute(
+                                "UPDATE update_backups SET status = ?1 WHERE id = ?2",
+                                ("restored", backup_id),
+                            )?;
+                        }
+                        Err(rollback_error) => {
+                            return Err(AppError::with_details(
+                                install_error.code.clone(),
+                                install_error.message.clone(),
+                                format!("Rollback also failed: {rollback_error}"),
+                            ));
+                        }
+                    }
+                }
+                return Err(install_error);
+            }
+        };
 
     Ok(InstallResult {
         component,
@@ -207,6 +232,20 @@ fn copy_path(source: &Path, dest: &Path) -> AppResult<()> {
             std::fs::create_dir_all(parent)?;
         }
         std::fs::copy(source, dest)?;
+    }
+    Ok(())
+}
+
+fn restore_path(source: &Path, dest: &Path) -> AppResult<()> {
+    if !source.is_dir() {
+        return Err(AppError::new(
+            "rollback_invalid",
+            "Rollback backup path is invalid",
+        ));
+    }
+    for entry in std::fs::read_dir(source)? {
+        let entry = entry?;
+        copy_path(&entry.path(), &dest.join(entry.file_name()))?;
     }
     Ok(())
 }
