@@ -232,9 +232,57 @@ fn available_space(path: &Path) -> AppResult<u64> {
 
     #[cfg(not(unix))]
     {
-        let _ = path;
-        Ok(0)
+        available_space_non_unix(path)
     }
+}
+
+#[cfg(all(not(unix), windows))]
+fn available_space_non_unix(path: &Path) -> AppResult<u64> {
+    use std::os::windows::ffi::OsStrExt;
+
+    let mut free_bytes = 0u64;
+    let wide_path = path
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect::<Vec<_>>();
+
+    let success = unsafe {
+        GetDiskFreeSpaceExW(
+            wide_path.as_ptr(),
+            &mut free_bytes,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+
+    if success == 0 {
+        return Err(AppError::with_details(
+            "disk_stats",
+            "Could not read disk stats",
+            std::io::Error::last_os_error().to_string(),
+        ));
+    }
+
+    Ok(free_bytes)
+}
+
+#[cfg(all(not(unix), windows))]
+extern "system" {
+    fn GetDiskFreeSpaceExW(
+        lp_directory_name: *const u16,
+        lp_free_bytes_available_to_caller: *mut u64,
+        lp_total_number_of_bytes: *mut u64,
+        lp_total_number_of_free_bytes: *mut u64,
+    ) -> i32;
+}
+
+#[cfg(all(not(unix), not(windows)))]
+fn available_space_non_unix(_path: &Path) -> AppResult<u64> {
+    Err(AppError::new(
+        "disk_stats",
+        "Disk stats are not supported on this platform",
+    ))
 }
 
 fn dir_size(path: &Path) -> AppResult<u64> {
