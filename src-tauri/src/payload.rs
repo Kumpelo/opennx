@@ -11,6 +11,9 @@ use tauri::Manager;
 const SWITCH_VENDOR_ID: u16 = 0x0955;
 const SWITCH_PRODUCT_ID: u16 = 0x7321;
 const RCM_MAX_PAYLOAD_SIZE: usize = 0x30000;
+const RCM_BULK_OUT_ENDPOINT: u8 = 0x01;
+const RCM_BULK_CHUNK_SIZE: usize = 0x1000;
+const RCM_TRIGGER_LENGTH: usize = 0x7000;
 
 #[derive(Serialize)]
 pub struct PayloadFile {
@@ -221,15 +224,7 @@ fn inject_payload_inner(app: &tauri::AppHandle, name: &str) -> AppResult<()> {
         )
     })?;
 
-    let request_type = rusb::request_type(
-        rusb::Direction::Out,
-        rusb::RequestType::Standard,
-        rusb::Recipient::Interface,
-    );
-
-    handle
-        .write_control(request_type, 0x01, 0x0000, 0x0000, &rcm_packet, timeout)
-        .map_err(|e| AppError::with_details("usb_write", "USB transfer failed", e.to_string()))?;
+    send_rcm_packet(&handle, &rcm_packet, timeout)?;
 
     Ok(())
 }
@@ -242,6 +237,42 @@ fn validated_payload_name(name: &str) -> AppResult<&str> {
         ));
     }
     Ok(name)
+}
+
+fn send_rcm_packet(
+    handle: &rusb::DeviceHandle<Context>,
+    packet: &[u8],
+    timeout: std::time::Duration,
+) -> AppResult<()> {
+    for chunk in packet.chunks(RCM_BULK_CHUNK_SIZE) {
+        let written = handle
+            .write_bulk(RCM_BULK_OUT_ENDPOINT, chunk, timeout)
+            .map_err(|e| {
+                AppError::with_details("usb_write", "USB bulk transfer failed", e.to_string())
+            })?;
+        if written != chunk.len() {
+            return Err(AppError::with_details(
+                "usb_write",
+                "USB bulk transfer was incomplete",
+                format!("wrote {written} of {} bytes", chunk.len()),
+            ));
+        }
+    }
+
+    let request_type = rusb::request_type(
+        rusb::Direction::In,
+        rusb::RequestType::Standard,
+        rusb::Recipient::Device,
+    );
+    let mut trigger = vec![0u8; RCM_TRIGGER_LENGTH];
+    match handle.read_control(request_type, 0x00, 0x0000, 0x0000, &mut trigger, timeout) {
+        Ok(_) | Err(rusb::Error::Timeout) => Ok(()),
+        Err(error) => Err(AppError::with_details(
+            "usb_trigger",
+            "USB RCM trigger transfer failed",
+            error.to_string(),
+        )),
+    }
 }
 
 fn record_history(
