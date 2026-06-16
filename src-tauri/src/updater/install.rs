@@ -111,9 +111,12 @@ fn select_asset(release: &ReleaseInfo) -> AppResult<&crate::updater::github::Rel
     release
         .assets
         .iter()
-        .find(|asset| {
-            let name = asset.name.to_ascii_lowercase();
-            name.ends_with(".zip") || name.ends_with(".bin") || name.ends_with(".nro")
+        .find(|asset| asset.name.to_ascii_lowercase().ends_with(".zip"))
+        .or_else(|| {
+            release.assets.iter().find(|asset| {
+                let name = asset.name.to_ascii_lowercase();
+                name.ends_with(".bin") || name.ends_with(".nro")
+            })
         })
         .ok_or_else(|| AppError::new("asset_missing", "No installable release asset was found"))
 }
