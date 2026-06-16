@@ -102,12 +102,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bundle_dir="src-tauri/target/${{ matrix.target }}/release/bundle"
           echo "BUILD_EXIT_CODE=${BUILD_EXIT_CODE:-unset}"
           echo "=== bundle directory listing ==="
-          if [ -d src-tauri/target/release/bundle ]; then
-            find src-tauri/target/release/bundle -maxdepth 5 -type f -print
+          if [ -d "$bundle_dir" ]; then
+            find "$bundle_dir" -maxdepth 5 -type f -print
           else
-            echo "src-tauri/target/release/bundle does not exist"
+            echo "$bundle_dir does not exist"
+            echo "=== target directory listing ==="
+            find src-tauri/target -maxdepth 5 -type f -print || true
           fi
 
           if [ "${BUILD_EXIT_CODE:-1}" -ne 0 ]; then
@@ -115,7 +118,7 @@ jobs:
             exit "${BUILD_EXIT_CODE:-1}"
           fi
 
-          mapfile -t files < <(find src-tauri/target/release/bundle -type f -name "*.${{ matrix.bundle }}" -print)
+          mapfile -t files < <(find "$bundle_dir" -type f -name "*.${{ matrix.bundle }}" -print)
           if [ "${#files[@]}" -eq 0 ]; then
             echo "No .${{ matrix.bundle }} artifacts found"
             exit 1
@@ -129,9 +132,9 @@ jobs:
         with:
           name: opennx-${{ matrix.target }}
           path: |
-            src-tauri/target/release/bundle/**/*.deb
-            src-tauri/target/release/bundle/**/*.dmg
-            src-tauri/target/release/bundle/**/*.msi
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
           if-no-files-found: error
 
   release:
