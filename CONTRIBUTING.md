@@ -4,7 +4,7 @@
 
 - Node.js 22+
 - pnpm
-- Rust 1.77+
+- Rust stable
 - Tauri system dependencies (webkit2gtk, etc.)
 
 ## Setup
@@ -28,9 +28,11 @@ pnpm tauri dev
 ## Before committing
 
 ```bash
-pnpm lint          # Frontend lint
-cargo clippy       # Rust lint
-pnpm build         # TypeScript + Vite build
+pnpm lint
+pnpm build
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## Pull request process
