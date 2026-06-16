@@ -17,6 +17,8 @@ jobs:
             os: macos-latest
           - target: aarch64-apple-darwin
             os: macos-latest
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -49,6 +51,10 @@ jobs:
       - name: Build (macOS)
         if: matrix.os == 'macos-latest'
         run: pnpm tauri build --target ${{ matrix.target }} --bundles dmg
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles msi
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
