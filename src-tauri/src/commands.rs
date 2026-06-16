@@ -227,7 +227,7 @@ fn available_space(path: &Path) -> AppResult<u64> {
         let stat = nix::sys::statvfs::statvfs(path).map_err(|e| {
             AppError::with_details("disk_stats", "Could not read disk stats", e.to_string())
         })?;
-        Ok(stat.blocks_available() * stat.fragment_size())
+        Ok((stat.blocks_available() as u64) * stat.fragment_size())
     }
 
     #[cfg(not(unix))]
