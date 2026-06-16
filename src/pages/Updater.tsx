@@ -55,6 +55,18 @@ export default function Updater() {
     }
   }
 
+  async function download(component: string) {
+    setBusy(`download:${component}`);
+    try {
+      await call("prepare_update", { component });
+      toast.success("Update downloaded");
+    } catch (error) {
+      toast.error(normalizeError(error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function rollback(id: number) {
     setBusy(`rollback:${id}`);
     try {
@@ -109,7 +121,13 @@ export default function Updater() {
                   </div>
                 </div>
                 <div className="flex gap-2 lg:justify-end">
-                  <Button variant="outline" size="sm" disabled={busy === `download:${release.component}`}>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={busy === `download:${release.component}`}
+                    onClick={() => download(release.component)}
+                  >
+                    <Download className="size-4" />
                     Download
                   </Button>
                   <Button
