@@ -36,7 +36,23 @@ jobs:
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           target: ${{ matrix.target }}
-          cache: true
+          cache: false
+
+      - name: Ensure Rust components
+        run: |
+          set -e
+          echo "=== rustc / cargo versions ==="
+          rustc --version || true
+          cargo --version || true
+          echo "=== installed rustup targets (before) ==="
+          rustup target list --installed || true
+          echo "Adding rust-src component and target if missing..."
+          # rust-src is often required by some tools (and rust-cache expectations)
+          rustup component add rust-src || true
+          rustup target add ${{ matrix.target }} || true
+          echo "=== installed rustup components/targets (after) ==="
+          rustup component list --installed || true
+          rustup target list --installed || true
 
       - name: Install Linux dependencies
         if: matrix.os == 'ubuntu-latest'
@@ -48,7 +64,31 @@ jobs:
 
       - name: Build (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: pnpm tauri build --target ${{ matrix.target }} --bundles deb
+        run: |
+          # capture output to a log and don't stop the job here: upload log afterwards
+          set -o pipefail
+          echo "=== pnpm version ==="
+          pnpm --version || true
+          echo "=== tauri info ==="
+          pnpm tauri info || true
+          mkdir -p src-tauri
+          # Run build, capture stdout+stderr to log. Prevent immediate exit so we can upload logs.
+          pnpm tauri build --target ${{ matrix.target }} --bundles deb 2>&1 | tee src-tauri/build-tauri.log || true
+          # capture exit code of the pnpm command (first element of pipe)
+          exit_code=${PIPESTATUS[0]:-0}
+          echo "BUILD_EXIT_CODE=$exit_code" >> $GITHUB_ENV
+          if [ "$exit_code" -ne 0 ]; then
+            echo "Build finished with non-zero exit code: $exit_code"
+            echo "Continuing to upload logs for diagnosis; verification step will still enforce presence of artifacts."
+          fi
+
+      - name: Upload build logs
+        if: matrix.os == 'ubuntu-latest' && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tauri-build-log-${{ matrix.target }}
+          path: src-tauri/build-tauri.log
+          if-no-files-found: warn
 
       - name: Verify Linux artifacts
         if: matrix.os == 'ubuntu-latest'
