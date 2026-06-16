@@ -1,23 +1,29 @@
 # OpenNX
 
-OpenNX is an open-source desktop toolkit for maintaining a Nintendo Switch homebrew setup safely.
+Open source Nintendo Switch homebrew maintenance toolkit.
 
-Built with Tauri, React, TypeScript, Rust and SQLite.
+<p align="left">
+  <a href="https://github.com/Kumpelo/opennx/actions"><img src="https://img.shields.io/github/actions/workflow/status/Kumpelo/opennx/ci.yml?branch=main&logo=github&label=CI" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue.svg" alt="License"></a>
+  <a href="https://github.com/Kumpelo/opennx/releases"><img src="https://img.shields.io/github/v/release/Kumpelo/opennx?include_prereleases&logo=github" alt="Release"></a>
+</p>
 
-## Alpha Scope
+Built with **Tauri** + **React** + **TypeScript** + **Rust** + **SQLite**.
 
-OpenNX is currently targeting a `v0.1.0 Alpha` release.
+OpenNX is designed to be a serious desktop tool for maintaining a legal homebrew setup: updates, backups, diagnostics, SD checks, payloads and configuration management from one place.
 
-Included in this alpha:
+## v0.1.0 Alpha Scope
 
-- Desktop application shell
-- Dashboard / Overview
-- Updates page
-- GitHub release checks
-- SD root selection
-- Backup preparation
-- Basic Doctor checks
-- Payload and configuration screens as early surfaces
+Included:
+
+- **Desktop UI** — Native Tauri shell with a compact maintenance layout
+- **Dashboard / Overview** — Current environment status and quick actions
+- **Updates** — Atmosphere, Hekate and Homebrew Menu release checks
+- **GitHub release checks** — Official release metadata from upstream projects
+- **SD root selection** — Choose and analyze an SD card root
+- **Backup preparation** — Backup surfaces before risky update workflows
+- **Doctor** — Basic diagnostics for missing files and setup issues
+- **Payloads / Configurations** — Early management surfaces
 
 Not fully stable yet:
 
@@ -28,17 +34,17 @@ Not fully stable yet:
 
 ## Features
 
-- Atmosphere, Hekate and Homebrew Menu release checks
-- Backup preparation before update workflows
-- SD root selection and basic SD analysis
-- Doctor checks for common file and configuration issues
-- Payload management surface
-- Configuration management surface
-- Safety options for backup, verification and rollback workflows
+- **Updates** — Check official releases for Atmosphere, Hekate and Homebrew Menu
+- **Backups** — Prepare and manage local setup backups
+- **Doctor** — Detect common SD structure and configuration issues
+- **SD Manager** — Analyze SD health, missing files and duplicates
+- **Payload Manager** — Add, organize and prepare RCM payloads
+- **Configuration Manager** — Early surfaces for Atmosphere, Exosphere and Hekate configs
+- **Settings** — Language, storage paths and safety preferences
 
 ## Non-goals
 
-OpenNX does not include or support:
+OpenNX does **not** include or support:
 
 - NSP installation
 - XCI support
@@ -50,28 +56,18 @@ OpenNX does not include or support:
 
 ## Development
 
-Requirements:
-
-- Node.js 22+
-- pnpm
-- Rust stable
-- Tauri system dependencies for your operating system
-
-Install dependencies:
-
 ```bash
 pnpm install
-```
-
-Run the desktop app:
-
-```bash
 pnpm tauri dev
 ```
 
-## Validation
+## Build
 
-Before opening a pull request, run:
+```bash
+pnpm tauri build
+```
+
+## Validation
 
 ```bash
 pnpm lint
@@ -83,4 +79,4 @@ cargo test --manifest-path src-tauri/Cargo.toml
 
 ## License
 
-OpenNX is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
+GNU General Public License v3.0 — see [LICENSE](LICENSE).
