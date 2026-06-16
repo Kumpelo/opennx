@@ -67,37 +67,37 @@ pub async fn install_update(app: tauri::AppHandle, component: String) -> AppResu
     let prepared = prepare_update(app.clone(), component.clone()).await?;
     let sd_root = selected_sd_root(&app)?;
     let safety = get_safety_settings(app.clone())?;
-    let backup_path = create_component_backup(&app, &sd_root, &component)?;
+    let prepared_path = Path::new(&prepared.downloaded_path);
+    let backup_path = create_component_backup(&app, &sd_root, &component, prepared_path)?;
     let conn = db::connect(&app)?;
     conn.execute(
         "INSERT INTO update_backups (component, path, status) VALUES (?1, ?2, ?3)",
         (&component, backup_path.to_string_lossy().as_ref(), "ready"),
     )?;
     let backup_id = conn.last_insert_rowid();
-    let installed_files =
-        match install_prepared(Path::new(&prepared.downloaded_path), &sd_root, &component) {
-            Ok(installed_files) => installed_files,
-            Err(install_error) => {
-                if safety.rollback_on_failure {
-                    match restore_path(&backup_path, &sd_root) {
-                        Ok(()) => {
-                            conn.execute(
-                                "UPDATE update_backups SET status = ?1 WHERE id = ?2",
-                                ("restored", backup_id),
-                            )?;
-                        }
-                        Err(rollback_error) => {
-                            return Err(AppError::with_details(
-                                install_error.code.clone(),
-                                install_error.message.clone(),
-                                format!("Rollback also failed: {rollback_error}"),
-                            ));
-                        }
+    let installed_files = match install_prepared(prepared_path, &sd_root, &component) {
+        Ok(installed_files) => installed_files,
+        Err(install_error) => {
+            if safety.rollback_on_failure {
+                match restore_path(&backup_path, &sd_root) {
+                    Ok(()) => {
+                        conn.execute(
+                            "UPDATE update_backups SET status = ?1 WHERE id = ?2",
+                            ("restored", backup_id),
+                        )?;
+                    }
+                    Err(rollback_error) => {
+                        return Err(AppError::with_details(
+                            install_error.code.clone(),
+                            install_error.message.clone(),
+                            format!("Rollback also failed: {rollback_error}"),
+                        ));
                     }
                 }
-                return Err(install_error);
             }
-        };
+            return Err(install_error);
+        }
+    };
 
     Ok(InstallResult {
         component,
@@ -122,6 +122,7 @@ fn create_component_backup(
     app: &tauri::AppHandle,
     sd_root: &Path,
     component: &str,
+    prepared_asset: &Path,
 ) -> AppResult<PathBuf> {
     let backup_dir = app
         .path()
@@ -144,8 +145,46 @@ fn create_component_backup(
             copy_path(&source, &dest)?;
         }
     }
+    backup_archive_root_files(prepared_asset, sd_root, &backup_dir)?;
 
     Ok(backup_dir)
+}
+
+fn backup_archive_root_files(source: &Path, sd_root: &Path, backup_dir: &Path) -> AppResult<()> {
+    let name = source
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_ascii_lowercase();
+    if !name.ends_with(".zip") {
+        return Ok(());
+    }
+
+    let file = std::fs::File::open(source)?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| {
+        AppError::with_details("zip_read", "Could not read zip archive", e.to_string())
+    })?;
+
+    for index in 0..archive.len() {
+        let entry = archive.by_index(index).map_err(|e| {
+            AppError::with_details("zip_entry", "Could not read zip entry", e.to_string())
+        })?;
+        if entry.is_dir() {
+            continue;
+        }
+        let Some(path) = entry.enclosed_name().map(|p| p.to_owned()) else {
+            continue;
+        };
+        if path.components().count() != 1 {
+            continue;
+        }
+        let source = sd_root.join(&path);
+        if source.exists() {
+            copy_path(&source, &backup_dir.join(path))?;
+        }
+    }
+
+    Ok(())
 }
 
 fn install_prepared(source: &Path, sd_root: &Path, component: &str) -> AppResult<usize> {
