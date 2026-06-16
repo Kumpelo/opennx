@@ -54,8 +54,15 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           echo "Checking for Linux artifacts..."
-          ls -la src-tauri/target/release/bundle/ || echo "Bundle directory not found!"
-          find src-tauri/target/release/bundle/ -name "*.deb" || echo "No .deb files found!"
+          if [ ! -d src-tauri/target/release/bundle/ ]; then
+            echo "Bundle directory not found!"
+            exit 1
+          fi
+          if ! find src-tauri/target/release/bundle/ -name "*.deb" -print -quit | grep -q .; then
+            echo "No .deb files found!"
+            find src-tauri/target/release/bundle/ -maxdepth 3 -type f -ls || true
+            exit 1
+          fi
 
       - name: Build (macOS)
         if: matrix.os == 'macos-latest'
@@ -65,8 +72,15 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           echo "Checking for macOS artifacts..."
-          ls -la src-tauri/target/release/bundle/ || echo "Bundle directory not found!"
-          find src-tauri/target/release/bundle/ -name "*.dmg" || echo "No .dmg files found!"
+          if [ ! -d src-tauri/target/release/bundle/ ]; then
+            echo "Bundle directory not found!"
+            exit 1
+          fi
+          if ! find src-tauri/target/release/bundle/ -name "*.dmg" -print -quit | grep -q .; then
+            echo "No .dmg files found!"
+            find src-tauri/target/release/bundle/ -maxdepth 3 -type f -ls || true
+            exit 1
+          fi
 
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
@@ -74,16 +88,22 @@ jobs:
 
       - name: Verify Windows artifacts
         if: matrix.os == 'windows-latest'
+        shell: powershell
         run: |
-           echo "Checking for Windows artifacts..."
-           Get-ChildItem -Path src-tauri/target/release/bundle/ -Recurse -ErrorAction SilentlyContinue | Out-Host
-           Get-ChildItem -Path src-tauri/target/release/bundle/ -Filter "*.msi" -ErrorAction SilentlyContinue | Out-Host
+           Write-Host "Checking for Windows artifacts..."
+           if (-not (Test-Path -Path src-tauri/target/release/bundle/)) { Write-Error "Bundle directory not found!"; exit 1 }
+           $msi = Get-ChildItem -Path src-tauri/target/release/bundle/ -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue
+           if (-not $msi) { Write-Error "No .msi files found!"; Get-ChildItem -Path src-tauri/target/release/bundle/ -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 20 | Format-List; exit 1 }
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: opennx-${{ matrix.target }}
-          path: src-tauri/target/release/bundle/
+          path: |
+            src-tauri/target/release/bundle/**/*.deb
+            src-tauri/target/release/bundle/**/*.dmg
+            src-tauri/target/release/bundle/**/*.msi
+          if-no-files-found: error
 
   release:
     name: Create Release
@@ -95,6 +115,15 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Dump downloaded artifacts
+        run: |
+          echo "=== Artifacts root ==="
+          ls -la artifacts || true
+          echo "=== Recursive listing ==="
+          find artifacts -type f -maxdepth 5 -ls || true
 
       - name: Extract tag
         run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
@@ -103,18 +132,18 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "=== Downloaded artifacts ==="
-          find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.msi" \) -ls
+          echo "=== Downloaded artifacts (searching in ./artifacts) ==="
+          find artifacts -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.msi" \) -ls
           
           files=()
           while IFS= read -r -d '' file; do
             files+=("$file")
-          done < <(find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.msi" \) -print0)
+          done < <(find artifacts -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.msi" \) -print0)
       
           if [ ${#files[@]} -eq 0 ]; then
             echo "No release artifacts were found"
-            echo "=== Directory structure ==="
-            find . -maxdepth 4 -type f
+            echo "=== Directory structure (top-level) ==="
+            find . -maxdepth 4 -type f -ls
             exit 1
           fi
       
