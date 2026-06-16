@@ -1,12 +1,17 @@
 name: Release
+
 on:
   push:
     tags:
       - "v*"
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build ${{ matrix.target }}
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: read
     strategy:
@@ -15,14 +20,17 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
+            bundle: deb
           - target: x86_64-apple-darwin
             os: macos-latest
+            bundle: dmg
           - target: aarch64-apple-darwin
             os: macos-latest
+            bundle: dmg
           - target: x86_64-pc-windows-msvc
             os: windows-latest
+            bundle: msi
 
-    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -30,7 +38,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: pnpm
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -39,17 +47,17 @@ jobs:
           cache: false
 
       - name: Ensure Rust components
+        shell: bash
         run: |
-          set -e
+          set -euo pipefail
           echo "=== rustc / cargo versions ==="
           rustc --version || true
           cargo --version || true
           echo "=== installed rustup targets (before) ==="
           rustup target list --installed || true
           echo "Adding rust-src component and target if missing..."
-          # rust-src is often required by some tools (and rust-cache expectations)
           rustup component add rust-src || true
-          rustup target add ${{ matrix.target }} || true
+          rustup target add "${{ matrix.target }}" || true
           echo "=== installed rustup components/targets (after) ==="
           rustup component list --installed || true
           rustup target list --installed || true
@@ -58,84 +66,65 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libgtk-3-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            libusb-1.0-0-dev \
+            librsvg2-dev \
+            patchelf
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build (Linux)
-        if: matrix.os == 'ubuntu-latest'
+      - name: Build
+        shell: bash
         run: |
-          # capture output to a log and don't stop the job here: upload log afterwards
           set -o pipefail
+          mkdir -p src-tauri
           echo "=== pnpm version ==="
           pnpm --version || true
           echo "=== tauri info ==="
           pnpm tauri info || true
-          mkdir -p src-tauri
-          # Run build, capture stdout+stderr to log. Prevent immediate exit so we can upload logs.
-          pnpm tauri build --target ${{ matrix.target }} --bundles deb 2>&1 | tee src-tauri/build-tauri.log || true
-          # capture exit code of the pnpm command (first element of pipe)
-          exit_code=${PIPESTATUS[0]:-0}
-          echo "BUILD_EXIT_CODE=$exit_code" >> $GITHUB_ENV
-          if [ "$exit_code" -ne 0 ]; then
-            echo "Build finished with non-zero exit code: $exit_code"
-            echo "Continuing to upload logs for diagnosis; verification step will still enforce presence of artifacts."
-          fi
+          pnpm tauri build --target "${{ matrix.target }}" --bundles "${{ matrix.bundle }}" 2>&1 | tee src-tauri/build-tauri.log
+          exit_code=${PIPESTATUS[0]}
+          echo "BUILD_EXIT_CODE=$exit_code" >> "$GITHUB_ENV"
+          exit "$exit_code"
 
-      - name: Upload build logs
-        if: matrix.os == 'ubuntu-latest' && always()
+      - name: Upload build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: tauri-build-log-${{ matrix.target }}
           path: src-tauri/build-tauri.log
           if-no-files-found: warn
 
-      - name: Verify Linux artifacts
-        if: matrix.os == 'ubuntu-latest'
+      - name: Verify artifacts
+        if: always()
+        shell: bash
         run: |
-          echo "Checking for Linux artifacts..."
-          if [ ! -d src-tauri/target/release/bundle/ ]; then
-            echo "Bundle directory not found!"
-            exit 1
-          fi
-          if ! find src-tauri/target/release/bundle/ -name "*.deb" -print -quit | grep -q .; then
-            echo "No .deb files found!"
-            find src-tauri/target/release/bundle/ -maxdepth 3 -type f -ls || true
-            exit 1
+          set -euo pipefail
+          echo "BUILD_EXIT_CODE=${BUILD_EXIT_CODE:-unset}"
+          echo "=== bundle directory listing ==="
+          if [ -d src-tauri/target/release/bundle ]; then
+            find src-tauri/target/release/bundle -maxdepth 5 -type f -print
+          else
+            echo "src-tauri/target/release/bundle does not exist"
           fi
 
-      - name: Build (macOS)
-        if: matrix.os == 'macos-latest'
-        run: pnpm tauri build --target ${{ matrix.target }} --bundles dmg
-
-      - name: Verify macOS artifacts
-        if: matrix.os == 'macos-latest'
-        run: |
-          echo "Checking for macOS artifacts..."
-          if [ ! -d src-tauri/target/release/bundle/ ]; then
-            echo "Bundle directory not found!"
-            exit 1
+          if [ "${BUILD_EXIT_CODE:-1}" -ne 0 ]; then
+            echo "Build failed with exit code ${BUILD_EXIT_CODE:-unset}"
+            exit "${BUILD_EXIT_CODE:-1}"
           fi
-          if ! find src-tauri/target/release/bundle/ -name "*.dmg" -print -quit | grep -q .; then
-            echo "No .dmg files found!"
-            find src-tauri/target/release/bundle/ -maxdepth 3 -type f -ls || true
+
+          mapfile -t files < <(find src-tauri/target/release/bundle -type f -name "*.${{ matrix.bundle }}" -print)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No .${{ matrix.bundle }} artifacts found"
             exit 1
           fi
 
-      - name: Build (Windows)
-        if: matrix.os == 'windows-latest'
-        run: pnpm tauri build --target ${{ matrix.target }} --bundles msi
+          echo "Found ${#files[@]} release artifact(s):"
+          printf '%s\n' "${files[@]}"
 
-      - name: Verify Windows artifacts
-        if: matrix.os == 'windows-latest'
-        shell: powershell
-        run: |
-           Write-Host "Checking for Windows artifacts..."
-           if (-not (Test-Path -Path src-tauri/target/release/bundle/)) { Write-Error "Bundle directory not found!"; exit 1 }
-           $msi = Get-ChildItem -Path src-tauri/target/release/bundle/ -Filter "*.msi" -Recurse -ErrorAction SilentlyContinue
-           if (-not $msi) { Write-Error "No .msi files found!"; Get-ChildItem -Path src-tauri/target/release/bundle/ -Recurse -Force -ErrorAction SilentlyContinue | Select-Object -First 20 | Format-List; exit 1 }
-
-      - name: Upload artifact
+      - name: Upload release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: opennx-${{ matrix.target }}
@@ -158,36 +147,28 @@ jobs:
         with:
           path: artifacts
 
-      - name: Dump downloaded artifacts
-        run: |
-          echo "=== Artifacts root ==="
-          ls -la artifacts || true
-          echo "=== Recursive listing ==="
-          find artifacts -type f -maxdepth 5 -ls || true
-
       - name: Extract tag
-        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> "$GITHUB_ENV"
 
       - name: Create Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          echo "=== Downloaded artifacts (searching in ./artifacts) ==="
-          find artifacts -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.msi" \) -ls
-          
+          set -euo pipefail
+          echo "=== downloaded artifacts ==="
+          find artifacts -maxdepth 5 -type f -print || true
+
           files=()
           while IFS= read -r -d '' file; do
             files+=("$file")
           done < <(find artifacts -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.msi" \) -print0)
-      
-          if [ ${#files[@]} -eq 0 ]; then
-            echo "No release artifacts were found"
-            echo "=== Directory structure (top-level) ==="
-            find . -maxdepth 4 -type f -ls
+
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No final release artifacts were found"
             exit 1
           fi
-      
-          echo "Found ${#files[@]} artifact(s)"
+
+          echo "Found ${#files[@]} release artifact(s)"
           gh release create "$TAG" \
             --title "OpenNX $TAG" \
             --generate-notes \
