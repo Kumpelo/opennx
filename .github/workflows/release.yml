@@ -85,7 +85,7 @@ jobs:
           files=()
           while IFS= read -r -d '' file; do
             files+=("$file")
-          done < <(find ./opennx-* -type f -print0)
+          done < <(find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.msi" \) -print0)
 
           if [ ${#files[@]} -eq 0 ]; then
             echo "No release artifacts were found"
