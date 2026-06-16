@@ -66,7 +66,8 @@ pub async fn install_update(app: tauri::AppHandle, component: String) -> AppResu
     let prepared = prepare_update(app.clone(), component.clone()).await?;
     let sd_root = selected_sd_root(&app)?;
     let backup_path = create_component_backup(&app, &sd_root, &component)?;
-    let installed_files = install_prepared(Path::new(&prepared.downloaded_path), &sd_root)?;
+    let installed_files =
+        install_prepared(Path::new(&prepared.downloaded_path), &sd_root, &component)?;
     let conn = db::connect(&app)?;
     conn.execute(
         "INSERT INTO update_backups (component, path, status) VALUES (?1, ?2, ?3)",
@@ -122,7 +123,7 @@ fn create_component_backup(
     Ok(backup_dir)
 }
 
-fn install_prepared(source: &Path, sd_root: &Path) -> AppResult<usize> {
+fn install_prepared(source: &Path, sd_root: &Path, component: &str) -> AppResult<usize> {
     let name = source
         .file_name()
         .unwrap_or_default()
@@ -142,10 +143,16 @@ fn install_prepared(source: &Path, sd_root: &Path) -> AppResult<usize> {
         std::fs::copy(source, dest)?;
         Ok(1)
     } else if name.ends_with(".nro") {
-        let dest = sd_root
-            .join("switch")
-            .join(source.file_name().unwrap_or_default());
-        std::fs::create_dir_all(sd_root.join("switch"))?;
+        let dest = if component == "hbmenu" {
+            sd_root.join("hbmenu.nro")
+        } else {
+            sd_root
+                .join("switch")
+                .join(source.file_name().unwrap_or_default())
+        };
+        if let Some(parent) = dest.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
         std::fs::copy(source, dest)?;
         Ok(1)
     } else {
