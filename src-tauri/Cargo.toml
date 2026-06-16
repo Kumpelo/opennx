@@ -1,6 +1,6 @@
 [package]
 name = "OpenNX"
-version = "0.0.1"
+version = "0.1.0"
 description = "Open source Switch toolkit"
 authors = ["you"]
 license = "GPL-3.0-only"
