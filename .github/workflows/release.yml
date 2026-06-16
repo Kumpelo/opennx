@@ -82,17 +82,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          echo "=== Downloaded artifacts ==="
+          find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.msi" \) -ls
+          
           files=()
           while IFS= read -r -d '' file; do
             files+=("$file")
           done < <(find . -type f \( -name "*.deb" -o -name "*.dmg" -o -name "*.msi" \) -print0)
-
+      
           if [ ${#files[@]} -eq 0 ]; then
             echo "No release artifacts were found"
+            echo "=== Directory structure ==="
             find . -maxdepth 4 -type f
             exit 1
           fi
-
+      
+          echo "Found ${#files[@]} artifact(s)"
           gh release create "$TAG" \
             --title "OpenNX $TAG" \
             --generate-notes \
