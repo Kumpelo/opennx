@@ -1,35 +1,86 @@
 # OpenNX
 
-Open source Nintendo Switch homebrew toolkit.
+OpenNX is an open-source desktop toolkit for maintaining a Nintendo Switch homebrew setup safely.
 
-<p align="left">
-  <a href="https://github.com/Kumpelo/opennx/actions"><img src="https://img.shields.io/github/actions/workflow/status/Kumpelo/opennx/ci.yml?branch=main&logo=github&label=CI" alt="CI"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPLv3-blue.svg" alt="License"></a>
-  <a href="https://github.com/Kumpelo/opennx/releases"><img src="https://img.shields.io/github/v/release/Kumpelo/opennx?include_prereleases&logo=github" alt="Release"></a>
-</p>
+Built with Tauri, React, TypeScript, Rust and SQLite.
 
-Built with **Tauri** + **React** + **TypeScript** + **Rust**.
+## Alpha Scope
+
+OpenNX is currently targeting a `v0.1.0 Alpha` release.
+
+Included in this alpha:
+
+- Desktop application shell
+- Dashboard / Overview
+- Updates page
+- GitHub release checks
+- SD root selection
+- Backup preparation
+- Basic Doctor checks
+- Payload and configuration screens as early surfaces
+
+Not fully stable yet:
+
+- Automatic install
+- Rollback
+- Payload injection
+- Full visual configuration editor
 
 ## Features
 
-- **Payload Manager** — Add, inject, download and delete RCM payloads
-- **Updater** — Keep Atmosphere, Hekate and homebrew up to date
-- **SD Manager** — Analyze and manage your SD card
-- **USB Injection** — Inject payloads via RCM (VID 0955, PID 7321)
+- Atmosphere, Hekate and Homebrew Menu release checks
+- Backup preparation before update workflows
+- SD root selection and basic SD analysis
+- Doctor checks for common file and configuration issues
+- Payload management surface
+- Configuration management surface
+- Safety options for backup, verification and rollback workflows
+
+## Non-goals
+
+OpenNX does not include or support:
+
+- NSP installation
+- XCI support
+- Game downloads
+- Nintendo firmware distribution
+- Nintendo keys
+- Piracy shops or content mirrors
+- Copyrighted content distribution
 
 ## Development
 
+Requirements:
+
+- Node.js 22+
+- pnpm
+- Rust stable
+- Tauri system dependencies for your operating system
+
+Install dependencies:
+
 ```bash
 pnpm install
+```
+
+Run the desktop app:
+
+```bash
 pnpm tauri dev
 ```
 
-## Build
+## Validation
+
+Before opening a pull request, run:
 
 ```bash
-pnpm tauri build
+pnpm lint
+pnpm build
+cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo check --manifest-path src-tauri/Cargo.toml
+cargo test --manifest-path src-tauri/Cargo.toml
 ```
 
 ## License
 
-GNU General Public License v3.0 — see [LICENSE](LICENSE).
+OpenNX is licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE).
