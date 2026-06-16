@@ -46,11 +46,11 @@ jobs:
 
       - name: Build (Linux)
         if: matrix.os == 'ubuntu-latest'
-        run: pnpm tauri build --bundles deb
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles deb
 
       - name: Build (macOS)
         if: matrix.os == 'macos-latest'
-        run: pnpm tauri build --bundles dmg
+        run: pnpm tauri build --target ${{ matrix.target }} --bundles dmg
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

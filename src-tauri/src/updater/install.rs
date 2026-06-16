@@ -68,22 +68,29 @@ pub async fn install_update(app: tauri::AppHandle, component: String) -> AppResu
     let sd_root = selected_sd_root(&app)?;
     let safety = get_safety_settings(app.clone())?;
     let prepared_path = Path::new(&prepared.downloaded_path);
-    let backup_path = create_component_backup(&app, &sd_root, &component, prepared_path)?;
     let conn = db::connect(&app)?;
-    conn.execute(
-        "INSERT INTO update_backups (component, path, status) VALUES (?1, ?2, ?3)",
-        (&component, backup_path.to_string_lossy().as_ref(), "ready"),
-    )?;
-    let backup_id = conn.last_insert_rowid();
+    let backup = if safety.backup_before_update {
+        let backup_path = create_component_backup(&app, &sd_root, &component, prepared_path)?;
+        conn.execute(
+            "INSERT INTO update_backups (component, path, status) VALUES (?1, ?2, ?3)",
+            (&component, backup_path.to_string_lossy().as_ref(), "ready"),
+        )?;
+        Some((backup_path, conn.last_insert_rowid()))
+    } else {
+        None
+    };
     let installed_files = match install_prepared(prepared_path, &sd_root, &component) {
         Ok(installed_files) => installed_files,
         Err(install_error) => {
             if safety.rollback_on_failure {
+                let Some((backup_path, backup_id)) = backup.as_ref() else {
+                    return Err(install_error);
+                };
                 match restore_path(&backup_path, &sd_root) {
                     Ok(()) => {
                         conn.execute(
                             "UPDATE update_backups SET status = ?1 WHERE id = ?2",
-                            ("restored", backup_id),
+                            ("restored", *backup_id),
                         )?;
                     }
                     Err(rollback_error) => {
@@ -102,7 +109,10 @@ pub async fn install_update(app: tauri::AppHandle, component: String) -> AppResu
     Ok(InstallResult {
         component,
         version: prepared.version,
-        backup_path: backup_path.to_string_lossy().into_owned(),
+        backup_path: backup
+            .as_ref()
+            .map(|(path, _)| path.to_string_lossy().into_owned())
+            .unwrap_or_default(),
         installed_files,
     })
 }

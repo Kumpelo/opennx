@@ -23,19 +23,11 @@ pub struct BackupEntry {
 #[tauri::command]
 pub fn create_sd_backup(app: tauri::AppHandle) -> AppResult<BackupResult> {
     let sd_root = selected_sd_root(&app)?;
-    let backup_root = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| {
-            AppError::with_details(
-                "app_data_dir",
-                "Could not resolve application data directory",
-                e.to_string(),
-            )
-        })?
-        .join("sd-backups")
-        .join(timestamp());
-    std::fs::create_dir_all(&backup_root)?;
+    let backup_store = backups_root(&app)?;
+    std::fs::create_dir_all(&backup_store)?;
+    ensure_backup_store_outside_source(&sd_root, &backup_store)?;
+    let backup_root = backup_store.join(timestamp());
+    std::fs::create_dir(&backup_root)?;
     let mut stats = CopyStats::default();
     copy_path(&sd_root, &backup_root, &mut stats)?;
     Ok(BackupResult {
@@ -48,13 +40,7 @@ pub fn create_sd_backup(app: tauri::AppHandle) -> AppResult<BackupResult> {
 #[tauri::command]
 pub fn restore_sd_backup(app: tauri::AppHandle, backup_path: String) -> AppResult<BackupResult> {
     let sd_root = selected_sd_root(&app)?;
-    let source = PathBuf::from(&backup_path);
-    if !source.is_dir() {
-        return Err(AppError::new(
-            "backup_missing",
-            "Backup folder was not found",
-        ));
-    }
+    let source = validated_backup_path(&app, &backup_path)?;
     let mut stats = CopyStats::default();
     copy_path(&source, &sd_root, &mut stats)?;
     Ok(BackupResult {
@@ -92,11 +78,7 @@ pub fn list_sd_backups(app: tauri::AppHandle) -> AppResult<Vec<BackupEntry>> {
 
 #[tauri::command]
 pub fn delete_sd_backup(app: tauri::AppHandle, backup_path: String) -> AppResult<()> {
-    let root = backups_root(&app)?;
-    let path = PathBuf::from(&backup_path);
-    if !path.starts_with(&root) || !path.is_dir() {
-        return Err(AppError::new("backup_invalid", "Backup path is invalid"));
-    }
+    let path = validated_backup_path(&app, &backup_path)?;
     std::fs::remove_dir_all(path)?;
     Ok(())
 }
@@ -146,6 +128,34 @@ fn backups_root(app: &tauri::AppHandle) -> AppResult<PathBuf> {
             )
         })?
         .join("sd-backups"))
+}
+
+fn ensure_backup_store_outside_source(source: &Path, backup_store: &Path) -> AppResult<()> {
+    let source = source.canonicalize()?;
+    let backup_store = backup_store.canonicalize()?;
+    if backup_store.starts_with(&source) {
+        return Err(AppError::new(
+            "backup_inside_source",
+            "Backup storage must be outside the selected SD root",
+        ));
+    }
+    Ok(())
+}
+
+fn validated_backup_path(app: &tauri::AppHandle, backup_path: &str) -> AppResult<PathBuf> {
+    let root = backups_root(app)?;
+    std::fs::create_dir_all(&root)?;
+    let root = root.canonicalize()?;
+    let path = PathBuf::from(backup_path);
+    let path = path
+        .canonicalize()
+        .map_err(|_| AppError::new("backup_missing", "Backup folder was not found"))?;
+
+    if path == root || !path.starts_with(&root) || !path.is_dir() {
+        return Err(AppError::new("backup_invalid", "Backup path is invalid"));
+    }
+
+    Ok(path)
 }
 
 fn dir_size(path: &Path) -> AppResult<u64> {
