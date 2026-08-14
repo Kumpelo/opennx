@@ -4,6 +4,8 @@ multi-ecosystem-groups:
   all-dependencies:
     schedule:
       interval: "weekly"
+    commit-message:
+      prefix: "chore(deps)"
 
 updates:
   - package-ecosystem: "cargo"
@@ -11,13 +13,9 @@ updates:
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    commit-message:
-      prefix: "chore(deps)"
 
   - package-ecosystem: "npm"
     directory: "/"
     patterns:
       - "*"
     multi-ecosystem-group: "all-dependencies"
-    commit-message:
-      prefix: "chore(deps)"
